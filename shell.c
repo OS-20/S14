@@ -1,48 +1,107 @@
 #include <stdio.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
 #include <stdlib.h>
-#include <string.h>
 #include <unistd.h>
+#include <string.h>
 #include <sys/wait.h>
 
-void typeline_n(char *fname, int n) {
-    FILE *fp = fopen(fname, "r");
-    if (!fp) { printf("File not found!\n"); return; }
-
-    char line[200];
-    int count = 0;
-    while (fgets(line, sizeof(line), fp) && count < n) {
-        printf("%s", line);
-        count++;
+void make_toks(char *s, char *tok[]) {
+    int i = 0;
+    char *p;
+    p = strtok(s, " \t");
+    while (p != NULL) {
+        tok[i++] = p;
+        p = strtok(NULL, " \t");
     }
-    fclose(fp);
+    tok[i] = NULL;
+}
+
+void typeline(char *fn, char *op) {
+    int fh, i = 0, j = 0, lines = 0;
+    char c;
+
+    fh = open(fn, O_RDONLY);
+    if (fh == -1) {
+        printf("file %s not found\n", fn);
+        return;
+    }
+
+    if (strcmp(op, "a") == 0) {
+        while (read(fh, &c, 1) > 0)
+            printf("%c", c);
+        close(fh);
+        return;
+    }
+   int n=atoi(op);
+
+    if (n > 0) {
+        i = 0;
+        while (read(fh, &c, 1) > 0) {
+            printf("%c", c);
+            if (c == '\n') i++;
+            if (i == n) break;
+        }
+    }
+
+    if (n < 0) {
+        i = 0;
+        while (read(fh, &c, 1) > 0) {
+            if (c == '\n') i++;
+        }
+
+        lseek(fh, 0, SEEK_SET);
+        j = 0;
+        while (read(fh, &c, 1) > 0) {
+            if (c == '\n') j++;
+            if (j == i + n) break;
+        }
+
+        while (read(fh, &c, 1) > 0) {
+            printf("%c", c);
+        }
+    }
+
+    close(fh);
 }
 
 int main() {
-    char input[100], *arg[5];
+    char buff[80], *args[10];
+    int pid;
 
     while (1) {
-        printf("myshell$ ");
-        if (!fgets(input, sizeof(input), stdin)) break;
+        printf("Myshell$ ");
+        fflush(stdout);
 
-        int i = 0;
-        arg[i] = strtok(input, " \t\n");
-        if (!arg[i]) continue;
-        while ((arg[++i] = strtok(NULL, " \t\n")));
+        if (fgets(buff, sizeof(buff), stdin) == NULL)
+            continue;
 
-        if (!strcmp(arg[0], "exit")) break;
+        if (buff[strlen(buff) - 1] == '\n')
+            buff[strlen(buff) - 1] = '\0';
 
-        else if (!strcmp(arg[0], "typeline") && arg[1] && arg[1][0]=='+' && arg[2]) {
-            int n = atoi(arg[1]+1);  // remove '+' and convert to number
-            typeline_n(arg[2], n);
-        }
+        make_toks(buff, args);
 
-        else {
-            if (fork() == 0) {
-                execvp(arg[0], arg);
-                perror("Command failed");
+        if (args[0] == NULL)
+            continue;
+
+        if (strcmp(args[0], "typeline") == 0) {
+            if (args[1] && args[2])
+                typeline(args[2], args[1]);
+            else
+                printf("Usage: typeline <n|a> <filename>\n");
+        } else {
+            pid = fork();
+            if (pid > 0) {
+                wait(NULL);
+            } else {
+                if (execvp(args[0], args) == -1)
+                    printf("Bad Command\n");
                 exit(1);
-            } else wait(NULL);
+            }
         }
     }
+
     return 0;
 }
+
